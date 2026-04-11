@@ -1,0 +1,12 @@
+{
+  "geminiModel": "gemini-3.1-flash-lite-preview",
+  "ttsEngine": "gemini",
+  "geminiTtsModel": "gemini-2.5-flash-preview-tts",
+  "geminiTtsVoice": "Aoede",
+  "captureViewport": true,
+  "scrollBeforeCapture": true,
+  "scrollMaxMs": 14000,
+  "scrollMaxViewportHeights": 32,
+  "maxTextChars": 200000,
+  "maxInlineImages": 12
+}
