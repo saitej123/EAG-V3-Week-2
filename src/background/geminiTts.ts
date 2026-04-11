@@ -50,7 +50,8 @@ export async function synthesizeGeminiTts(params: {
   if (data.error?.message) throw new Error(data.error.message);
 
   const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!b64) throw new Error("Gemini TTS returned no audio. Check ttsEngine / model / voice in webmacaw.config.json.");
+  if (!b64)
+    throw new Error("Gemini TTS returned no audio. Check ttsEngine / model / voice in fairframe.config.json.");
 
   return b64;
 }

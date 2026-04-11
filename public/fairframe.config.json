@@ -1,5 +1,5 @@
 {
-  "geminiModel": "gemini-3.1-flash-lite-preview",
+  "geminiModel": "gemini-3-flash-preview",
   "ttsEngine": "gemini",
   "geminiTtsModel": "gemini-2.5-flash-preview-tts",
   "geminiTtsVoice": "Aoede",
@@ -8,5 +8,6 @@
   "scrollMaxMs": 14000,
   "scrollMaxViewportHeights": 32,
   "maxTextChars": 200000,
-  "maxInlineImages": 12
+  "maxInlineImages": 12,
+  "maxVlmStrips": 20
 }

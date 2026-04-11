@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" aria-hidden="true">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="url(#bg)"/>
+  <!-- Thicker strokes so 16×16 toolbar size stays readable -->
+  <g fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 34 34 V 54 M 34 34 H 54"/>
+    <path d="M 94 34 V 54 M 94 34 H 74"/>
+    <path d="M 34 94 V 74 M 34 94 H 54"/>
+    <path d="M 94 94 V 74 M 94 94 H 74"/>
+  </g>
+  <line x1="44" y1="64" x2="84" y2="64" stroke="#38bdf8" stroke-width="7" stroke-linecap="round"/>
+</svg>

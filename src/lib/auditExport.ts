@@ -27,6 +27,21 @@ export function auditToMarkdown(session: AuditSessionStored): string {
     `- **Analyzed:** ${new Date(analyzedAt).toISOString()}`,
     `- **DOM nodes sent:** ${domNodeCount}`,
   ];
+  if ("document" in meta && meta.document) {
+    const d = meta.document;
+    parts.push(
+      `- **Document:** ${d.scrollWidth}×${d.scrollHeight}px scroll size · scroll (${d.scrollX}, ${d.scrollY})`,
+    );
+  }
+  if (session.analysisMeta?.screenshotStripCount != null) {
+    parts.push(`- **Screenshot strips (VLM):** ${session.analysisMeta.screenshotStripCount}`);
+  }
+  if (session.comparison) {
+    const c = session.comparison;
+    parts.push(
+      `- **vs prior run** (${new Date(c.previousAnalyzedAt).toISOString()}): likely fixed ${c.likelyResolved}, likely new ${c.likelyNew}, same signature ${c.likelyUnchanged} (heuristic)`,
+    );
+  }
   if (notes) parts.push(`- **Notes:** ${notes}`);
   parts.push(
     ``,
@@ -46,6 +61,16 @@ export function auditToMarkdown(session: AuditSessionStored): string {
 
   for (const issue of issues) {
     parts.push(`### [${issue.severity.toUpperCase()}] ${issue.type} (${issue.category})`, ``);
+    if (issue.analysisTags?.length) {
+      parts.push(`**Tags:** ${issue.analysisTags.join(", ")}`, ``);
+    }
+    if (issue.boundingBox) {
+      const b = issue.boundingBox;
+      parts.push(
+        `**BBox:** ${Math.round(b.x)}, ${Math.round(b.y)} · ${Math.round(b.width)}×${Math.round(b.height)}`,
+        ``,
+      );
+    }
     if (issue.wcagReference) {
       parts.push(`**WCAG:** ${issue.wcagReference}`, ``);
     }

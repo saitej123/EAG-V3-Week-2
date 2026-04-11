@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ViewportProfile } from "../types/audit";
 import { DEFAULT_GEMINI_AUDIT_MODEL, DEFAULT_GEMINI_IMAGE_MODEL } from "../config/gemini";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
@@ -9,7 +8,6 @@ import { sendMessage } from "../sidepanel/messaging";
 type LoadedSettings = {
   apiBaseUrl: string;
   apiKey: string;
-  defaultViewport: ViewportProfile;
   geminiApiKey: string;
   geminiModel: string;
   geminiImageModel: string;
@@ -23,7 +21,6 @@ export default function OptionsApp() {
   const [geminiModel, setGeminiModel] = useState(DEFAULT_GEMINI_AUDIT_MODEL);
   const [geminiImageModel, setGeminiImageModel] = useState(DEFAULT_GEMINI_IMAGE_MODEL);
   const [geminiMockupsEnabled, setGeminiMockupsEnabled] = useState(true);
-  const [defaultViewport, setDefaultViewport] = useState<ViewportProfile>("desktop");
   const [saved, setSaved] = useState(false);
   const [keyCheck, setKeyCheck] = useState<"idle" | "checking" | "ok" | "bad">("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -39,7 +36,6 @@ export default function OptionsApp() {
       setGeminiModel(res.settings.geminiModel || DEFAULT_GEMINI_AUDIT_MODEL);
       setGeminiImageModel(res.settings.geminiImageModel || DEFAULT_GEMINI_IMAGE_MODEL);
       setGeminiMockupsEnabled(res.settings.geminiMockupsEnabled !== false);
-      setDefaultViewport(res.settings.defaultViewport);
     }
   }, []);
 
@@ -51,7 +47,6 @@ export default function OptionsApp() {
     await chrome.storage.local.set({
       auditApiBaseUrl: apiBaseUrl.trim(),
       auditApiKey: apiKey.trim(),
-      auditDefaultViewport: defaultViewport,
       geminiApiKey: geminiApiKey.trim(),
       auditGeminiModel: geminiModel.trim() || DEFAULT_GEMINI_AUDIT_MODEL,
       auditGeminiImageModel: geminiImageModel.trim() || DEFAULT_GEMINI_IMAGE_MODEL,
@@ -197,18 +192,6 @@ export default function OptionsApp() {
                 placeholder="Leave blank unless your server requires it"
                 autoComplete="off"
               />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Default screen size label</span>
-              <select
-                className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-                value={defaultViewport}
-                onChange={(e) => setDefaultViewport(e.target.value as ViewportProfile)}
-              >
-                <option value="desktop">Desktop</option>
-                <option value="tablet">Tablet</option>
-                <option value="mobile">Mobile</option>
-              </select>
             </label>
             <Button type="button" onClick={() => void save()}>
               Save all settings

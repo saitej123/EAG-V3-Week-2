@@ -1,70 +1,57 @@
 # FairFrame
 
-**Reframe your UI—before your users do.**
+Chrome **MV3** side panel: **Gemini** (default host) or **your review API** + viewport JPEGs + DOM → UX/a11y findings, optional image mockups, overlays, Markdown/JSON export.
 
-FairFrame is a Chrome side panel for teams who ship web apps and care about **real-world UX and accessibility**. It grabs what’s on screen plus a structured snapshot of the page, then runs a **technical review**: rationale, checklists, CSS/HTML/ARIA patches, on-page highlights—and **optional AI-generated mockups** when a visual makes the fix obvious.
-
----
-
-## Why the name?
-
-**Fair** → inclusive design: contrast, targets, labels, keyboard paths.  
-**Frame** → how the interface is *framed*—hierarchy, density, CTAs, clutter.  
-
-Short, memorable, and aligned with what the tool actually does (not a generic “assistant” name).
+**Default host:** requires a **Gemini API key** ([AI Studio](https://aistudio.google.com/apikey)). There is **no offline/demo analysis** on that host.
 
 ---
 
-## What FairFrame does (latest behavior)
+## Behavior
 
-| Layer | What you get |
-|--------|----------------|
-| **Gemini (text)** | Deep findings: `advancedRationale`, `implementationChecklist`, `codePatches`, concrete `suggestedFix` — aimed at senior ICs, not fluff. |
-| **Gemini (image)** | Up to **2** mockups per run when the model’s `imageMockupPlan` says a wireframe helps — model **`gemini-3.1-flash-image-preview`** (toggle in Settings). |
-| **Highlights** | Severity-colored overlays on the live page; hover/tap for details. |
-| **Exports** | Markdown + JSON (`fairframe-report.*`). |
+| Topic | Detail |
+|--------|--------|
+| **Routing** | **Non-demo URL** → POST JSON to your server only. **Demo host + Gemini key** → Google `generateContent` + optional image mockups. |
+| **Capture** | **Pre-expand** (async scroll, when `scrollBeforeCapture`) hydrates lazy DOM *before* screenshots; **VLM** uses **async** content-script scroll + **rAF settle** per strip (window or largest **overflow** container), overlapping tiles, cap **`maxVlmStrips`** (default 20, max 32); then scroll restored. **DOM** collect skips a second expand if pre-expand succeeded. |
+| **Issues** | Gemini prompt targets **UX + UI critic breadth** (layout, type, IA, copy, trust, patterns) as well as a11y/SEO; **`analysisTags`** include e.g. `visual_design`, `copy_tone`, `ia_navigation`. **`boundingBox`** should match DOM `box` when the selector exists; the extension **fills missing boxes** from the snapshot for overlays. |
+| **History** | Last **24** runs (lite) in `chrome.storage.local` → next run on same URL: comparison + prior context to Gemini. |
+| **Session** | Latest UI state in `chrome.storage.session` (large blobs may be stripped on quota). |
+| **Side panel** | **Overview / Issues / Page / Log** tabs; **Issues** and **Log** scroll inside the panel so long runs stay usable. After a successful run, the panel switches to **Issues**. |
 
-**Routing:** Your **own review URL** (non-demo) → **only** your server. **Demo URL + Gemini key** → Google. **Demo + no key** → offline sample data.
+Reports use a **desktop** metadata label.
 
 ---
 
-## Quick install
+## Install
 
 ```bash
-npm install
-npm run build
+npm install && npm run build
 ```
 
-Chrome → `chrome://extensions` → **Developer mode** → **Load unpacked** → select the **`dist`** folder.
+`chrome://extensions` → Developer mode → **Load unpacked** → **`dist`**.
 
-Pin **FairFrame** from the puzzle menu. Optional: **Extensions → Keyboard shortcuts** → **Run FairFrame review** (if you used an older build, re-bind the shortcut—command id changed).
-
----
-
-## Settings (plain English)
-
-1. **Gemini API key** ([Google AI Studio](https://aistudio.google.com/apikey)) — powers analysis + optional images.  
-2. **Analysis model** — default `gemini-3.1-flash-lite-preview` (change if Google renames previews).  
-3. **Image model** — default `gemini-3.1-flash-image-preview` for mockups.  
-4. **Generate mockups** — on by default; turn off to save latency/cost.  
-5. **Custom server URL** — if set to something other than the demo host, FairFrame **never** calls Gemini from the extension.
+Shortcut: **Run FairFrame review** in `chrome://extensions/shortcuts`.
 
 ---
 
-## Privacy (short)
+## Settings
 
-FairFrame reads **the tab you run a check on**. The **last report** is stored **locally** (mockup images may be stripped if browser storage quota is tight). **Gemini** traffic is subject to [Google’s AI terms](https://ai.google.dev/terms). **Your server** → your policy.
-
----
-
-## For developers
-
-- **Stack:** TypeScript, Vite, React, Tailwind, MV3.  
-- **Checks:** `npm run typecheck`, `npm run verify` (build + manifest/bundle smoke test).  
-- **Key files:** `src/background/geminiAudit.ts`, `geminiImageMockup.ts`, `auditApi.ts`, `src/config/gemini.ts`.
-
-Preview models and API fields (`responseModalities`, `imageConfig`) can change; the image path **retries without** `imageConfig` on **400** or common invalid-argument errors.
+1. **Gemini API key** — required on default host; can validate from the side panel.  
+2. **Models** — `gemini-3-flash-preview` (audit default), `gemini-3.1-flash-image-preview` (mockups). Preview IDs change — see [Gemini models](https://ai.google.dev/gemini-api/docs/models).  
+3. **Mockups** — on by default.  
+4. **Custom review URL** — not the demo host → extension does **not** call Gemini.
 
 ---
 
-*FairFrame — frame the web fairly.*
+## Privacy
+
+Reads the tab you audit. Data is **local** except **Gemini** or **your server**. [Google AI terms](https://ai.google.dev/terms) apply for Gemini.
+
+---
+
+## Developers
+
+`npm run typecheck` · `npm run verify`
+
+**Core:** `src/background/index.ts`, `auditApi.ts` (`enrichIssuesFromDomSnapshot`), `geminiAudit.ts`, `geminiImageMockup.ts`, `fullPageCapture.ts`, `auditRunHistory.ts`, `src/content/auditDom.ts`, `src/sidepanel/App.tsx`.
+
+**Shipped defaults:** `public/fairframe.config.json` (Gemini model from extension build, TTS engine, capture limits) is copied into `dist/`; the background still accepts legacy `webmacaw.config.json` if you keep that file in an old unpacked build.

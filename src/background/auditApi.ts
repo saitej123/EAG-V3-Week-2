@@ -1,11 +1,11 @@
 import type {
   AuditAnalyzeResponse,
   AuditCodePatches,
+  AuditDomNode,
   AuditIssue,
   AuditRequestPayload,
   AuditSummary,
 } from "../types/audit";
-import { WCAG_REFERENCE_MAP } from "../types/audit";
 import { DEFAULT_GEMINI_AUDIT_MODEL, DEFAULT_GEMINI_IMAGE_MODEL, getAuditSettings, isDemoApiBase } from "./auditSettings";
 import { analyzeAuditWithGemini } from "./geminiAudit";
 import { generateAuditMockupImage } from "./geminiImageMockup";
@@ -50,102 +50,28 @@ function pickPatches(v: unknown): AuditCodePatches | undefined {
   return { css, html, aria };
 }
 
-function mockFromPayload(payload: AuditRequestPayload): AuditAnalyzeResponse {
-  const nodes = payload.dom.nodes.filter((n) => n.visible);
-  const pick = (i: number) => nodes[i];
-
-  const issues: AuditIssue[] = [];
-  const n0 = pick(0);
-  if (n0) {
-    issues.push({
-      id: "mock-1",
-      selector: n0.selector,
-      category: "accessibility",
-      type: "contrast",
-      severity: "major",
-      description: "Computed foreground/background may not meet WCAG AA for normal text (4.5:1).",
-      impactedUsers: ["Low vision", "Users in bright sunlight"],
-      suggestedFix:
-        "Target ≥4.5:1 for normal text (≥3:1 for large/bold). Example:\n.btn-primary {\n  color: #0a0a0a;\n  background-color: #f5f5f5;\n}\n@media (prefers-contrast: more) { ... }",
-      wcagReference: WCAG_REFERENCE_MAP.contrast,
-      boundingBox: n0.box,
-      advancedRationale:
-        "Use computed colors from snapshot vs white background; verify with a contrast checker on final brand tokens. AA is the legal baseline for many orgs; AAA body text is often impractical for brand colors.",
-      implementationChecklist: [
-        "Define design tokens for text/bg pairs with measured ratios.",
-        "Add focus-visible outline that meets non-text contrast (3:1).",
-        "Snapshot Percy/Chromatic or Storybook a11y addon for regressions.",
-      ],
-      codePatches: {
-        css: `.btn { color: #0a0a0a; background-color: #fafafa; }\n.btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }`,
-      },
-    });
+/** Fill missing boundingBox from DOM snapshot so page overlays align. */
+export function enrichIssuesFromDomSnapshot(issues: AuditIssue[], nodes: AuditDomNode[]): void {
+  const bySelector = new Map<string, AuditDomNode["box"]>();
+  for (const n of nodes) {
+    if (!bySelector.has(n.selector)) bySelector.set(n.selector, n.box);
   }
-  const n1 = pick(1);
-  if (n1) {
-    issues.push({
-      id: "mock-2",
-      selector: n1.selector,
-      category: "ux",
-      type: "tap_target",
-      severity: "minor",
-      description: "Interactive target likely under recommended minimum for dense touch layouts.",
-      impactedUsers: ["Motor impairments", "Touch users"],
-      suggestedFix:
-        "Enforce min 44×44 CSS px hit area (WCAG 2.5.8) or equivalent padding + min-width/min-height; avoid overlapping touch targets.",
-      wcagReference: WCAG_REFERENCE_MAP.targetSize,
-      boundingBox: n1.box,
-      advancedRationale:
-        "Client rect from snapshot vs viewport scale; DPR does not change CSS px requirements. Consider increasing spacing between adjacent controls.",
-      implementationChecklist: [
-        "Audit all interactive nodes in this cluster with box model overlay.",
-        "Add pointer-events and z-index review if overlays steal taps.",
-      ],
-      codePatches: {
-        css: `a.nav-link {\n  min-width: 44px;\n  min-height: 44px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n}`,
-      },
-    });
+  for (const issue of issues) {
+    const bb = issue.boundingBox;
+    if (bb && bb.width > 0 && bb.height > 0) continue;
+    let box = bySelector.get(issue.selector);
+    if (!box) {
+      const hit = nodes.find((n) => n.selector === issue.selector);
+      if (hit) box = hit.box;
+    }
+    if (!box) {
+      const sub = nodes.find((n) => issue.selector.includes(n.selector) && n.selector.length >= 4);
+      if (sub) box = sub.box;
+    }
+    if (box && box.width > 0 && box.height > 0) {
+      issue.boundingBox = { x: box.x, y: box.y, width: box.width, height: box.height };
+    }
   }
-  const n2 = pick(2);
-  if (n2 && n2.tag === "img") {
-    issues.push({
-      id: "mock-3",
-      selector: n2.selector,
-      category: "accessibility",
-      type: "alt_text",
-      severity: "suggestion",
-      description: "Verify whether image is decorative or informative; alt must match role.",
-      impactedUsers: ["Screen reader users"],
-      suggestedFix:
-        'Decorative: alt="" and aria-hidden where appropriate. Informative: concise purpose-focused alt; avoid filename soup.',
-      wcagReference: WCAG_REFERENCE_MAP.nameRoleValue,
-      boundingBox: n2.box,
-      advancedRationale:
-        "Screen readers announce name from alt or aria-label; wrong role breaks comprehension for linked images.",
-      implementationChecklist: [
-        "If inside <a>, ensure alt describes destination, not only pixels.",
-        "Add figcaption if complex chart (with extended description pattern).",
-      ],
-      codePatches: {
-        html: `<!-- decorative -->\n<img src="..." alt="" role="presentation" />\n\n<!-- informative -->\n<img src="..." alt="Quarterly revenue up 12% vs prior year" />`,
-      },
-    });
-  }
-
-  const summary: AuditSummary = {
-    total: issues.length,
-    critical: issues.filter((i) => i.severity === "critical").length,
-    major: issues.filter((i) => i.severity === "major").length,
-    minor: issues.filter((i) => i.severity === "minor").length,
-    suggestion: issues.filter((i) => i.severity === "suggestion").length,
-  };
-
-  return {
-    summary,
-    issues,
-    notes:
-      "Demo mode — sample technical findings. Add a Gemini API key in FairFrame settings for full AI + optional mockups.",
-  };
 }
 
 type BoundingBoxLike = { x: number; y: number; width: number; height: number };
@@ -153,14 +79,6 @@ type BoundingBoxLike = { x: number; y: number; width: number; height: number };
 export function normalizeResponse(data: unknown): AuditAnalyzeResponse {
   const d = data as Partial<AuditAnalyzeResponse>;
   const issues = Array.isArray(d.issues) ? d.issues : [];
-  const s = d.summary;
-  const summary: AuditSummary = {
-    total: typeof s?.total === "number" ? s.total : issues.length,
-    critical: typeof s?.critical === "number" ? s.critical : 0,
-    major: typeof s?.major === "number" ? s.major : 0,
-    minor: typeof s?.minor === "number" ? s.minor : 0,
-    suggestion: typeof s?.suggestion === "number" ? s.suggestion : 0,
-  };
   const mapped: AuditIssue[] = issues.map((raw, idx) => {
     const i = raw as Record<string, unknown>;
     return {
@@ -189,10 +107,11 @@ export function normalizeResponse(data: unknown): AuditAnalyzeResponse {
       advancedRationale: pickStr(i.advancedRationale),
       implementationChecklist: pickStrArr(i.implementationChecklist),
       codePatches: pickPatches(i.codePatches),
+      analysisTags: pickStrArr(i.analysisTags) ?? pickStrArr(i.tags),
     };
   });
 
-  const recount = {
+  const recount: AuditSummary = {
     total: mapped.length,
     critical: mapped.filter((i) => i.severity === "critical").length,
     major: mapped.filter((i) => i.severity === "major").length,
@@ -200,11 +119,9 @@ export function normalizeResponse(data: unknown): AuditAnalyzeResponse {
     suggestion: mapped.filter((i) => i.severity === "suggestion").length,
   };
 
-  const summaryAligned: AuditSummary =
-    typeof s?.total === "number" && s.total === mapped.length ? summary : { ...recount };
-
+  /** Always derive counts from parsed issues so UI chips match the findings list (model summary often drifts). */
   return {
-    summary: summaryAligned,
+    summary: recount,
     issues: mapped,
     notes: typeof d.notes === "string" ? d.notes : undefined,
   };
@@ -220,6 +137,7 @@ function issueContextForImage(issue: AuditIssue): string {
     `suggestedFix: ${issue.suggestedFix}`,
     issue.advancedRationale ? `advancedRationale: ${issue.advancedRationale}` : "",
     issue.wcagReference ? `wcag: ${issue.wcagReference}` : "",
+    issue.analysisTags?.length ? `tags: ${issue.analysisTags.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -274,7 +192,9 @@ export async function postAuditAnalyze(payload: AuditRequestPayload): Promise<Au
       throw new Error(`Review server ${res.status}: ${t.slice(0, 200) || res.statusText}`);
     }
     const json = await res.json();
-    return normalizeResponse(json);
+    const out = normalizeResponse(json);
+    enrichIssuesFromDomSnapshot(out.issues, payload.dom.nodes);
+    return out;
   }
 
   if (geminiApiKey) {
@@ -286,6 +206,7 @@ export async function postAuditAnalyze(payload: AuditRequestPayload): Promise<Au
     });
     const plan = extractImageMockupPlan(parsed);
     const out = normalizeResponse(parsed);
+    enrichIssuesFromDomSnapshot(out.issues, payload.dom.nodes);
     out.notes = [out.notes, notesExtra].filter(Boolean).join(" — ");
 
     if (geminiMockupsEnabled && plan.length > 0) {
@@ -302,5 +223,7 @@ export async function postAuditAnalyze(payload: AuditRequestPayload): Promise<Au
     return out;
   }
 
-  return mockFromPayload(payload);
+  throw new Error(
+    "FairFrame needs a Gemini API key when using the default review host. Open Settings and paste your key from Google AI Studio.",
+  );
 }

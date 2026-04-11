@@ -26,5 +26,7 @@ if (content.length < 500) fail("content.js unexpectedly small");
 
 if (!existsSync(join(dist, "sidepanel.html"))) fail("missing dist/sidepanel.html");
 if (!existsSync(join(dist, "options.html"))) fail("missing dist/options.html");
+if (!existsSync(join(dist, "fairframe.config.json")))
+  fail("missing dist/fairframe.config.json — ensure public/fairframe.config.json exists");
 
-console.log("FairFrame verify: OK (manifest, bundles, and HTML present).");
+console.log("FairFrame verify: OK (manifest, bundles, HTML, fairframe.config.json present).");

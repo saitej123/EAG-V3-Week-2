@@ -1,7 +1,15 @@
 import type { AuditDomNode, AuditRequestMeta, BoundingBoxDoc, ViewportProfile } from "../types/audit";
+import {
+  readScrollMetrics,
+  resetFairFrameScrollSession,
+  restoreScrollState,
+  saveScrollState,
+  setPrimaryScroll,
+} from "./fairframeScroll";
 
 const OVERLAY_ID = "__ux_audit_overlay_root__";
 const MAX_NODES = 420;
+const MAX_CANDIDATE_ELS = 520;
 
 function escapeCssIdent(s: string): string {
   if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
@@ -101,6 +109,78 @@ function accessibleName(el: Element): string | null {
   return null;
 }
 
+function isInteractiveCandidate(el: Element): boolean {
+  const t = el.tagName.toLowerCase();
+  return !(t === "img" || /^h[1-6]$/i.test(t));
+}
+
+function docScrollHeight(): number {
+  const root = document.scrollingElement || document.documentElement;
+  return Math.max(
+    root.scrollHeight,
+    document.documentElement.scrollHeight,
+    document.body?.scrollHeight ?? 0,
+    document.documentElement.offsetHeight,
+  );
+}
+
+export type AuditScrollExpandOptions = {
+  scrollBeforeCapture: boolean;
+  scrollMaxMs: number;
+  scrollMaxViewportHeights: number;
+};
+
+/**
+ * Scrolls from top → bottom (and back) so lazy lists and infinite feeds hydrate before DOM collect.
+ */
+export async function expandPageByScrolling(opts: AuditScrollExpandOptions): Promise<{
+  scrollExpanded: boolean;
+  scrollUsedMs: number;
+  steps: number;
+}> {
+  if (!opts.scrollBeforeCapture) {
+    return { scrollExpanded: false, scrollUsedMs: 0, steps: 0 };
+  }
+
+  resetFairFrameScrollSession();
+  const t0 = Date.now();
+  const saved = saveScrollState();
+  let steps = 0;
+  let y = 0;
+
+  setPrimaryScroll(0);
+  await new Promise((r) => setTimeout(r, 220));
+
+  for (;;) {
+    if (steps >= opts.scrollMaxViewportHeights || Date.now() - t0 >= opts.scrollMaxMs) {
+      break;
+    }
+
+    const m = readScrollMetrics();
+    const ih = Math.max(1, m.viewportH);
+    const bottom = Math.max(0, m.scrollHeight - ih);
+    y = Math.min(y, bottom);
+    setPrimaryScroll(y);
+    steps++;
+    await new Promise((r) => setTimeout(r, 280));
+
+    const m2 = readScrollMetrics();
+    const bottom2 = Math.max(0, m2.scrollHeight - m2.viewportH);
+    if (y >= bottom2 - 8) {
+      setPrimaryScroll(bottom2);
+      await new Promise((r) => setTimeout(r, 320));
+      break;
+    }
+
+    y += Math.max(1, Math.floor(m.viewportH * 0.88));
+  }
+
+  restoreScrollState(saved);
+  await new Promise((r) => setTimeout(r, 140));
+
+  return { scrollExpanded: true, scrollUsedMs: Date.now() - t0, steps };
+}
+
 function gatherCandidateElements(doc: Document): Element[] {
   const set = new Set<Element>();
   const q = [
@@ -143,6 +223,19 @@ export function collectDomAuditSnapshot(profile: ViewportProfile): {
   meta: AuditRequestMeta;
 } {
   const candidates = gatherCandidateElements(document);
+  const sorted = [...candidates].sort((a, b) => {
+    const ba = docBox(a);
+    const bb = docBox(b);
+    const va = visibleInViewport(ba) && ba.width > 0 && ba.height > 0 ? 0 : 1;
+    const vb = visibleInViewport(bb) && bb.width > 0 && bb.height > 0 ? 0 : 1;
+    if (va !== vb) return va - vb;
+    const ia = isInteractiveCandidate(a);
+    const ib = isInteractiveCandidate(b);
+    if (ia !== ib) return ia ? -1 : 1;
+    return ba.y - bb.y;
+  });
+
+  const cappedEls = sorted.slice(0, MAX_CANDIDATE_ELS);
   const nodes: AuditDomNode[] = [];
 
   const pushNode = (el: Element) => {
@@ -170,24 +263,17 @@ export function collectDomAuditSnapshot(profile: ViewportProfile): {
     nodes.push(node);
   };
 
-  const interactive = candidates.filter((el) => {
-    const t = el.tagName.toLowerCase();
-    if (t === "img" || t.startsWith("h")) return false;
-    return true;
-  });
-  const rest = candidates.filter((el) => {
-    const t = el.tagName.toLowerCase();
-    return t === "img" || t.startsWith("h");
-  });
+  for (const el of cappedEls) {
+    pushNode(el);
+    if (nodes.length >= MAX_NODES) break;
+  }
 
-  for (const el of interactive) {
-    pushNode(el);
-    if (nodes.length >= MAX_NODES) break;
-  }
-  for (const el of rest) {
-    pushNode(el);
-    if (nodes.length >= MAX_NODES) break;
-  }
+  const scrollHeight = docScrollHeight();
+  const scrollWidth = Math.max(
+    document.documentElement.scrollWidth,
+    document.body?.scrollWidth ?? 0,
+    document.documentElement.offsetWidth,
+  );
 
   const meta: AuditRequestMeta = {
     url: location.href,
@@ -197,6 +283,14 @@ export function collectDomAuditSnapshot(profile: ViewportProfile): {
       width: window.innerWidth,
       height: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio || 1,
+    },
+    document: {
+      scrollHeight,
+      scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      clientHeight: document.documentElement.clientHeight,
+      scrollY: window.scrollY,
+      scrollX: window.scrollX,
     },
     capturedAt: Date.now(),
   };
