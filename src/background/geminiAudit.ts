@@ -9,7 +9,7 @@ const MAX_JSON_CHARS = 195_000;
 /** Matches capture: tiled overlapping strips (see fullPageCapture, max 32). */
 const MAX_VLM_IMAGES = 32;
 
-const JSON_SCHEMA_HINT = `Return ONE JSON object only (no markdown fences), with this exact shape:
+const JSON_SCHEMA_HINT = `Return **one raw JSON object only** (no markdown, no \`\`\` fences, no commentary before or after). If you use structured output, still avoid any extra text outside the JSON.
 
 {
   "summary": { "total": number, "critical": number, "major": number, "minor": number, "suggestion": number },
@@ -90,6 +90,163 @@ function slimPayloadForGemini(payload: AuditRequestPayload): { jsonText: string;
   return { jsonText, nodeCount: nodes.length };
 }
 
+/**
+ * Gemini sometimes wraps JSON in ```json fences or adds a short preamble despite responseMimeType.
+ * See: https://ai.google.dev/gemini-api/docs/json-mode
+ */
+function stripOuterMarkdownFence(s: string): string {
+  let t = s.trim();
+  if (!t.startsWith("```")) return t;
+  t = t.replace(/^```(?:json)?\s*/i, "");
+  t = t.replace(/\s*```\s*$/i, "");
+  return t.trim();
+}
+
+/** First ```json ... ``` block that looks like an object (last wins if multiple). */
+function extractJsonFromMarkdownBlocks(s: string): string | null {
+  const re = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  let best: string | null = null;
+  while ((m = re.exec(s)) !== null) {
+    const inner = m[1]?.trim();
+    if (inner && inner.startsWith("{")) best = inner;
+  }
+  return best;
+}
+
+/** First top-level `{ ... }` by brace depth (respects strings). */
+function extractBalancedJsonObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i]!;
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (c === "\\" && inStr) {
+      esc = true;
+      continue;
+    }
+    if (c === '"' && !esc) {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr) continue;
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function parseGeminiJsonText(raw: string): unknown {
+  const trimmed = raw.trim();
+  const attempts: string[] = [trimmed, stripOuterMarkdownFence(trimmed)];
+
+  const fromBlock = extractJsonFromMarkdownBlocks(trimmed);
+  if (fromBlock) attempts.push(fromBlock, stripOuterMarkdownFence(fromBlock));
+
+  const balanced =
+    extractBalancedJsonObject(trimmed) ||
+    extractBalancedJsonObject(stripOuterMarkdownFence(trimmed)) ||
+    (fromBlock ? extractBalancedJsonObject(fromBlock) : null);
+  if (balanced) attempts.push(balanced);
+
+  const seen = new Set<string>();
+  for (const candidate of attempts) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      /* next */
+    }
+  }
+
+  const preview = trimmed.slice(0, 160).replace(/\s+/g, " ");
+  throw new Error(
+    `Gemini returned text that was not valid JSON after cleanup (markdown fences / extra prose). Snippet: ${preview}${trimmed.length > 160 ? "…" : ""}`,
+  );
+}
+
+/**
+ * Optional structured output schema (REST: generationConfig.responseJsonSchema).
+ * https://ai.google.dev/gemini-api/docs/structured-output
+ */
+const AUDIT_RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: {
+      type: "object",
+      properties: {
+        total: { type: "integer" },
+        critical: { type: "integer" },
+        major: { type: "integer" },
+        minor: { type: "integer" },
+        suggestion: { type: "integer" },
+      },
+      required: ["total", "critical", "major", "minor", "suggestion"],
+    },
+    issues: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          selector: { type: "string" },
+          category: { type: "string" },
+          type: { type: "string" },
+          severity: { type: "string" },
+          description: { type: "string" },
+          impactedUsers: { type: "array", items: { type: "string" } },
+          suggestedFix: { type: "string" },
+          wcagReference: { type: "string" },
+          boundingBox: {
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
+          analysisTags: { type: "array", items: { type: "string" } },
+          advancedRationale: { type: "string" },
+          implementationChecklist: { type: "array", items: { type: "string" } },
+          codePatches: {
+            type: "object",
+            properties: {
+              css: { type: "string" },
+              html: { type: "string" },
+              aria: { type: "string" },
+            },
+          },
+        },
+        required: ["id", "selector", "category", "type", "severity", "description", "impactedUsers", "suggestedFix"],
+      },
+    },
+    imageMockupPlan: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          issueId: { type: "string" },
+          generationPrompt: { type: "string" },
+        },
+        required: ["issueId", "generationPrompt"],
+      },
+    },
+    notes: { type: "string" },
+  },
+  required: ["summary", "issues"],
+};
+
 export async function analyzeAuditWithGemini(params: {
   apiKey: string;
   model: string;
@@ -150,15 +307,20 @@ ${jsonText}
   }
   parts.push({ text: userText });
 
-  const body = {
+  const generationConfigBase = {
+    temperature: 0.22,
+    maxOutputTokens: 28672,
+    responseMimeType: "application/json",
+  };
+
+  const bodyWithSchema = {
     systemInstruction: {
       parts: [{ text: buildSystemInstruction() }],
     },
     contents: [{ role: "user", parts }],
     generationConfig: {
-      temperature: 0.22,
-      maxOutputTokens: 28672,
-      responseMimeType: "application/json",
+      ...generationConfigBase,
+      responseJsonSchema: AUDIT_RESPONSE_JSON_SCHEMA,
     },
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
@@ -168,11 +330,33 @@ ${jsonText}
     ],
   };
 
-  const res = await fetch(url, {
+  const bodyPlainJson = {
+    ...bodyWithSchema,
+    generationConfig: { ...generationConfigBase },
+  };
+
+  let res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(bodyWithSchema),
   });
+
+  if (res.status === 400) {
+    const err400 = await res.text();
+    const retry =
+      /schema|Schema|JSON|invalid/i.test(err400) ||
+      err400.includes("responseJsonSchema") ||
+      err400.includes("generationConfig");
+    if (retry) {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPlainJson),
+      });
+    } else {
+      throw new Error(`Gemini API 400: ${err400.slice(0, 500)}`);
+    }
+  }
 
   if (!res.ok) {
     const errText = await res.text();
@@ -217,21 +401,16 @@ ${jsonText}
     );
   }
 
-  if (cand?.finishReason === "MAX_TOKENS") {
-    try {
-      JSON.parse(raw);
-    } catch {
+  let parsed: unknown;
+  try {
+    parsed = parseGeminiJsonText(raw);
+  } catch (e) {
+    if (cand?.finishReason === "MAX_TOKENS") {
       throw new Error(
         "Gemini output was cut off (MAX_TOKENS) before valid JSON finished. Try again or lower maxVlmStrips / DOM size.",
       );
     }
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("Gemini returned text that was not valid JSON. Try running the check again.");
+    throw e;
   }
 
   return {

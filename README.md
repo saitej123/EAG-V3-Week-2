@@ -35,7 +35,7 @@ Shortcut: **Run FairFrame review** in `chrome://extensions/shortcuts`.
 
 ## Settings
 
-1. **Gemini API key** — required on default host; can validate from the side panel.  
+1. **Gemini API key** — required on default host; can validate from the side panel. For **local dev**, add `GEMINI_API_KEY=your_key` to a project **`.env`** file; **`npm run build`** runs `sync-env` and writes **`public/config.local.json`** (gitignored). The **background** loads that file when **Chrome storage has no saved** Gemini key (saved key from Options / panel always wins).  
 2. **Models** — `gemini-3-flash-preview` (audit default), `gemini-3.1-flash-image-preview` (mockups). Preview IDs change — see [Gemini models](https://ai.google.dev/gemini-api/docs/models).  
 3. **Mockups** — on by default.  
 4. **Custom review URL** — not the demo host → extension does **not** call Gemini.
@@ -55,3 +55,5 @@ Reads the tab you audit. Data is **local** except **Gemini** or **your server**.
 **Core:** `src/background/index.ts`, `auditApi.ts` (`enrichIssuesFromDomSnapshot`), `geminiAudit.ts`, `geminiImageMockup.ts`, `fullPageCapture.ts`, `auditRunHistory.ts`, `src/content/auditDom.ts`, `src/sidepanel/App.tsx`.
 
 **Shipped defaults:** `public/fairframe.config.json` (Gemini model from extension build, TTS engine, capture limits) is copied into `dist/`; the background still accepts legacy `webmacaw.config.json` if you keep that file in an old unpacked build.
+
+**Gemini JSON:** Responses use `responseMimeType: application/json` plus optional **`responseJsonSchema`** ([structured output](https://ai.google.dev/gemini-api/docs/structured-output)); if the API rejects the schema, the client retries without it. The parser also strips markdown code fences and extracts a balanced root `{...}` object when the model adds extra prose.

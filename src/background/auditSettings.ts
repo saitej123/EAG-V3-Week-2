@@ -1,5 +1,6 @@
 import type { ViewportProfile } from "../types/audit";
 import { DEFAULT_GEMINI_AUDIT_MODEL, DEFAULT_GEMINI_IMAGE_MODEL } from "../config/gemini";
+import { getBundledGeminiApiKey } from "./bundledLocalConfig";
 
 const K_BASE = "auditApiBaseUrl";
 const K_KEY = "auditApiKey";
@@ -50,7 +51,12 @@ export async function getAuditSettings(): Promise<AuditSettings> {
   const vp = local[K_VIEWPORT] as ViewportProfile | undefined;
   const defaultViewport: ViewportProfile =
     vp === "tablet" || vp === "mobile" || vp === "desktop" ? vp : "desktop";
-  const geminiApiKey = String(local[K_GEMINI_KEY] || "").trim();
+  const storedGemini = local[K_GEMINI_KEY];
+  /** Storage wins; if the user never saved a key, fall back to bundled `config.local.json` from `.env` at build time. */
+  const geminiApiKey =
+    storedGemini === undefined
+      ? (await getBundledGeminiApiKey()).trim()
+      : String(storedGemini).trim();
   const geminiModelRaw = String(local[K_GEMINI_MODEL] || "").trim();
   const geminiModel = geminiModelRaw || DEFAULT_GEMINI_AUDIT_MODEL;
   const geminiImageModelRaw = String(local[K_GEMINI_IMAGE_MODEL] || "").trim();
