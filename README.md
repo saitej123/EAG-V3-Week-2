@@ -6,6 +6,21 @@ FairFrame lives in Chrome’s **side panel**. Open the tab you care about, run a
 
 ---
 
+## Screenshots
+
+**`2.png`** is a wide browser screenshot (full row). **`1`**, **`3`**, **`4`**, and **`5`** are taller side-panel shots, shown in pairs. On GitHub and in most previews, images scale to the page width. Replace files under `Images/` when you refresh captures.
+
+![FairFrame in the browser - wide view](./Images/2.png)
+
+*Full window / page context*
+
+|  |  |
+| :---: | :---: |
+| ![FairFrame side panel](./Images/1.png) | ![FairFrame side panel](./Images/4.png) |
+| ![FairFrame side panel](./Images/3.png) | ![FairFrame side panel](./Images/5.png) |
+
+---
+
 ## What you get
 
 |  |  |
