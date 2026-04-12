@@ -1,59 +1,75 @@
 # FairFrame
 
-Chrome **MV3** side panel: **Gemini** (default host) or **your review API** + viewport JPEGs + DOM → UX/a11y findings, optional image mockups, overlays, Markdown/JSON export.
+> **A calm second pair of eyes for any webpage** — layout, usability, accessibility, and content, with optional AI mockups and highlights right on the page.
 
-**Default host:** requires a **Gemini API key** ([AI Studio](https://aistudio.google.com/apikey)). There is **no offline/demo analysis** on that host.
-
----
-
-## Behavior
-
-| Topic | Detail |
-|--------|--------|
-| **Routing** | **Non-demo URL** → POST JSON to your server only. **Demo host + Gemini key** → Google `generateContent` + optional image mockups. |
-| **Capture** | **Pre-expand** (async scroll, when `scrollBeforeCapture`) hydrates lazy DOM *before* screenshots; **VLM** uses **async** content-script scroll + **rAF settle** per strip (window or largest **overflow** container), overlapping tiles, cap **`maxVlmStrips`** (default 20, max 32); then scroll restored. **DOM** collect skips a second expand if pre-expand succeeded. |
-| **Issues** | Gemini prompt targets **UX + UI critic breadth** (layout, type, IA, copy, trust, patterns) as well as a11y/SEO; **`analysisTags`** include e.g. `visual_design`, `copy_tone`, `ia_navigation`. **`boundingBox`** should match DOM `box` when the selector exists; the extension **fills missing boxes** from the snapshot for overlays. |
-| **History** | Last **24** runs (lite) in `chrome.storage.local` → next run on same URL: comparison + prior context to Gemini. |
-| **Session** | Latest UI state in `chrome.storage.session` (large blobs may be stripped on quota). |
-| **Side panel** | **Overview / Issues / Page / Log** tabs; **Issues** and **Log** scroll inside the panel so long runs stay usable. After a successful run, the panel switches to **Issues**. |
-
-Reports use a **desktop** metadata label.
+FairFrame lives in Chrome’s **side panel**. Open the tab you care about, run a review, and read **plain-language findings** you can share or export.
 
 ---
 
-## Install
+## What you get
 
-```bash
-npm install && npm run build
-```
+|  |  |
+| :--- | :--- |
+| **Review** | Looks at what’s on screen and how the page is built, then suggests improvements — not just a dry checklist. |
+| **Highlights** | Optional boxes on the page so you can see *where* each finding applies. |
+| **History** | Remembers recent runs on the same URL so you can see what might have changed. |
+| **Export** | Download a **Markdown** or **JSON** report for tickets, docs, or your team. |
 
-`chrome://extensions` → Developer mode → **Load unpacked** → **`dist`**.
-
-Shortcut: **Run FairFrame review** in `chrome://extensions/shortcuts`.
-
----
-
-## Settings
-
-1. **Gemini API key** — required on default host; can validate from the side panel. For **local dev**, add `GEMINI_API_KEY=your_key` to a project **`.env`** file; **`npm run build`** runs `sync-env` and writes **`public/config.local.json`** (gitignored). The **background** loads that file when **Chrome storage has no saved** Gemini key (saved key from Options / panel always wins).  
-2. **Models** — `gemini-3-flash-preview` (audit default), `gemini-3.1-flash-image-preview` (mockups). Preview IDs change — see [Gemini models](https://ai.google.dev/gemini-api/docs/models).  
-3. **Mockups** — on by default.  
-4. **Custom review URL** — not the demo host → extension does **not** call Gemini.
+**Default engine:** [Google Gemini](https://ai.google.dev/) (you add your own API key).  
+**Alternative:** Point FairFrame at **your own server** — then Gemini is not used.
 
 ---
 
-## Privacy
+## Quick start
 
-Reads the tab you audit. Data is **local** except **Gemini** or **your server**. [Google AI terms](https://ai.google.dev/terms) apply for Gemini.
+1. **Clone / open this project** and install dependencies:
+
+   ```bash
+   npm install && npm run build
+   ```
+
+2. In Chrome, open **`chrome://extensions`**, turn on **Developer mode**, click **Load unpacked**, and choose the **`dist`** folder.
+
+3. Open **FairFrame** from the extensions menu or side panel. Add your **Gemini API key** ([get one free](https://aistudio.google.com/apikey)) when asked.
+
+4. Visit any normal website, open the side panel, and tap **Review this page**.
+
+**Keyboard shortcut:** set **Run FairFrame review** under `chrome://extensions/shortcuts`.
 
 ---
 
-## Developers
+## Settings (simple)
 
-`npm run typecheck` · `npm run verify`
+- **API key** — Required when using the default Gemini setup. You can also put `GEMINI_API_KEY=...` in a project **`.env`** file; `npm run build` copies it into a local config file the extension can read **only if** you have not saved a key in Chrome yet (saved key always wins).
+- **Models** — Defaults are set in the project; you can override in the options page. Preview model names change over time — see [Gemini models](https://ai.google.dev/gemini-api/docs/models).
+- **Mockups** — Optional AI-generated **picture ideas** for some findings (extra API calls). Toggle in settings.
+- **Custom URL** — If you use your own review API instead of the demo host, FairFrame sends the capture there and does **not** call Gemini.
 
-**Core:** `src/background/index.ts`, `auditApi.ts` (`enrichIssuesFromDomSnapshot`), `geminiAudit.ts`, `geminiImageMockup.ts`, `fullPageCapture.ts`, `auditRunHistory.ts`, `src/content/auditDom.ts`, `src/sidepanel/App.tsx`.
+---
 
-**Shipped defaults:** `public/fairframe.config.json` (Gemini model from extension build, TTS engine, capture limits) is copied into `dist/`; the background still accepts legacy `webmacaw.config.json` if you keep that file in an old unpacked build.
+## Privacy (short)
 
-**Gemini JSON:** Responses use `responseMimeType: application/json` plus optional **`responseJsonSchema`** ([structured output](https://ai.google.dev/gemini-api/docs/structured-output)); if the API rejects the schema, the client retries without it. The parser also strips markdown code fences and extracts a balanced root `{...}` object when the model adds extra prose.
+FairFrame reads **the active tab** you choose to review. Data stays on your machine except when you use **Gemini** or **your configured server**. See [Google AI terms](https://ai.google.dev/terms) for Gemini.
+
+---
+
+## For developers
+
+| Command | Purpose |
+| :--- | :--- |
+| `npm run typecheck` | TypeScript |
+| `npm run verify` | Build + quick extension sanity check |
+| `npm run icons` | Regenerate PNG icons from `public/icons/icon-source.svg` |
+
+**Main code paths:** `src/background/index.ts`, `auditApi.ts`, `geminiAudit.ts`, `fullPageCapture.ts`, `auditRunHistory.ts`, `src/content/auditDom.ts`, `src/sidepanel/App.tsx`.
+
+**Bundled config**
+
+- `public/fairframe.config.json` — optional tuning (models, capture limits, scroll behavior); copied to `dist/`. Legacy filename `webmacaw.config.json` is still accepted if present.
+- `public/config.local.json` — generated from `.env` during build (gitignored); dev-only Gemini key fallback.
+
+**Gemini responses** use JSON mode and, when supported, a **response schema**; the client strips markdown fences and extracts a root JSON object if the model adds extra text. See [Structured output](https://ai.google.dev/gemini-api/docs/structured-output).
+
+---
+
+<p align="center"><strong>FairFrame</strong> · Chrome extension · MV3</p>

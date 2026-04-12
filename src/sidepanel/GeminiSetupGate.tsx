@@ -3,7 +3,6 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { DEFAULT_GEMINI_AUDIT_MODEL, DEFAULT_GEMINI_IMAGE_MODEL } from "../config/gemini";
 import { sendMessage } from "./messaging";
 
 type Props = {
@@ -47,21 +46,26 @@ export function GeminiSetupGate({ onSaved }: Props) {
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           <KeyRound className="h-4 w-4" />
-          Gemini API key
+          Connect Google Gemini
         </div>
-        <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
-          Required for the default host. Models:{" "}
-          <code className="rounded bg-zinc-100 px-1 text-[10px] dark:bg-zinc-900">{DEFAULT_GEMINI_AUDIT_MODEL}</code>
-          {" · "}
-          <code className="rounded bg-zinc-100 px-1 text-[10px] dark:bg-zinc-900">{DEFAULT_GEMINI_IMAGE_MODEL}</code>{" "}
-          (mockups, Settings).
+        <p className="text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+          Get a free key from{" "}
+          <a
+            className="font-medium text-zinc-800 underline dark:text-zinc-200"
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Google AI Studio
+          </a>
+          . You can change models anytime in Settings.
         </p>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
         <Input
           type="password"
           autoComplete="off"
-          placeholder="Key from Google AI Studio"
+          placeholder="Paste your API key here"
           value={key}
           onChange={(e) => setKey(e.target.value)}
         />
@@ -72,7 +76,7 @@ export function GeminiSetupGate({ onSaved }: Props) {
           onClick={() => void testAndSave()}
         >
           {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}
-          Validate &amp; save
+          Save key
         </Button>
         {err ? <p className="text-xs text-red-600 dark:text-red-400">{err}</p> : null}
         {okHint ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{okHint}</p> : null}

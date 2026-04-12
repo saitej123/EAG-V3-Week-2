@@ -23,7 +23,13 @@ import { GeminiSetupGate } from "./GeminiSetupGate";
 
 const AUDIT_VIEWPORT = "desktop" as const;
 
-const PIPELINE_STEPS = ["Tab", "Screenshots", "DOM", "Analyze", "Overlay"] as const;
+const PIPELINE_STEPS = [
+  "Looking at your tab",
+  "Capturing the page",
+  "Reading structure",
+  "Review with AI",
+  "Drawing highlights",
+] as const;
 
 type PanelTab = "overview" | "issues" | "page" | "log";
 
@@ -155,11 +161,11 @@ export default function App() {
 
   const reviewHint =
     reviewSource === "custom"
-      ? "Custom review URL."
+      ? "Using your own review server"
       : reviewSource === "gemini"
-        ? "Gemini."
+        ? "Using Google Gemini"
         : reviewSource === "demo"
-          ? "Add Gemini key (default host)."
+          ? "Add an API key to get started"
           : null;
 
   const meta = session?.meta;
@@ -203,12 +209,17 @@ export default function App() {
         </div>
         {!needsGeminiGate ? (
           <div className="flex border-t border-zinc-100 dark:border-zinc-800">
-            {tabBtn("overview", "Overview", <SquareStack className="h-3.5 w-3.5" />)}
-            {tabBtn("issues", `Issues${session ? ` (${issueCount})` : ""}`, <LayoutList className="h-3.5 w-3.5" />, !session)}
-            {tabBtn("page", "Page", <MonitorSmartphone className="h-3.5 w-3.5" />, !session)}
+            {tabBtn("overview", "Home", <SquareStack className="h-3.5 w-3.5" />)}
+            {tabBtn(
+              "issues",
+              `Findings${session ? ` (${issueCount})` : ""}`,
+              <LayoutList className="h-3.5 w-3.5" />,
+              !session,
+            )}
+            {tabBtn("page", "This page", <MonitorSmartphone className="h-3.5 w-3.5" />, !session)}
             {tabBtn(
               "log",
-              "Log",
+              "Activity",
               <ScrollText className="h-3.5 w-3.5" />,
               !session?.analysisLog?.length,
             )}
@@ -226,11 +237,11 @@ export default function App() {
         {needsGeminiGate ? (
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
             <GeminiSetupGate onSaved={onGeminiSaved} />
-            <p className="text-center text-[10px] text-zinc-500">
-              <button type="button" className="underline" onClick={openOptions}>
-                Settings
-              </button>{" "}
-              — custom API URL (no Gemini).
+            <p className="text-center text-[11px] text-zinc-500">
+              Prefer your own backend?{" "}
+              <button type="button" className="font-medium text-zinc-700 underline dark:text-zinc-300" onClick={openOptions}>
+                Open settings
+              </button>
             </p>
           </div>
         ) : null}
@@ -242,7 +253,7 @@ export default function App() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                    Running…
+                    Review in progress…
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2 pt-0">
@@ -265,16 +276,16 @@ export default function App() {
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200/90 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80">
               <Button type="button" className="h-11 w-full text-sm font-medium" disabled={busy} onClick={() => void runAudit()}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
-                Run check
+                Review this page
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button type="button" variant="outline" disabled={!session} onClick={() => setTab("issues")}>
                   <LayoutList className="h-4 w-4" />
-                  Open issues
+                  See findings
                 </Button>
                 <Button type="button" variant="outline" disabled={!session} onClick={() => void toggleOverlay()}>
                   {overlayVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  {overlayVisible ? "Hide overlay" : "Show overlay"}
+                  {overlayVisible ? "Hide highlights" : "Show highlights"}
                 </Button>
               </div>
             </div>
@@ -283,14 +294,14 @@ export default function App() {
               <>
                 <Card>
                   <CardHeader className="pb-2">
-                    <div className="text-sm font-medium">Last check</div>
+                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Latest review</div>
                     <p className="truncate text-xs text-zinc-500" title={session?.meta.url}>
                       {session?.meta.title || session?.meta.url}
                     </p>
                   </CardHeader>
                   <CardContent className="flex flex-wrap gap-2 pt-0">
                     <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-medium dark:border-zinc-800 dark:bg-zinc-900">
-                      Total {summary.total}
+                      {summary.total} finding{summary.total === 1 ? "" : "s"}
                     </span>
                     <span
                       className={cn(
@@ -332,11 +343,12 @@ export default function App() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center gap-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                         <GitCompare className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        vs last run
+                        Compared to last time
                       </div>
                       <p className="text-[10px] text-zinc-500">
-                        Prior: {new Date(session.comparison.previousAnalyzedAt).toLocaleString()} ·{" "}
-                        {session.comparison.previousTotal} issues
+                        Previous review: {new Date(session.comparison.previousAnalyzedAt).toLocaleString()} ·{" "}
+                        {session.comparison.previousTotal} finding
+                        {session.comparison.previousTotal === 1 ? "" : "s"}
                       </p>
                     </CardHeader>
                     <CardContent className="grid grid-cols-3 gap-2 pt-0">
@@ -344,54 +356,60 @@ export default function App() {
                         <div className="text-base font-semibold tabular-nums text-emerald-800 dark:text-emerald-200">
                           {session.comparison.likelyResolved}
                         </div>
-                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">Fixed</div>
+                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">Probably resolved</div>
                       </div>
                       <div className="rounded-lg bg-amber-50 py-2 text-center dark:bg-amber-950/40">
                         <div className="text-base font-semibold tabular-nums text-amber-900 dark:text-amber-200">
                           {session.comparison.likelyNew}
                         </div>
-                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">New</div>
+                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">New this run</div>
                       </div>
                       <div className="rounded-lg bg-zinc-100 py-2 text-center dark:bg-zinc-900">
                         <div className="text-base font-semibold tabular-nums text-zinc-800 dark:text-zinc-200">
                           {session.comparison.likelyUnchanged}
                         </div>
-                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">Same</div>
+                        <div className="text-[9px] text-zinc-600 dark:text-zinc-400">Still there</div>
                       </div>
                     </CardContent>
                   </Card>
                 ) : null}
               </>
             ) : (
-              <p className="text-center text-xs text-zinc-500">No run yet.</p>
+              <p className="rounded-lg border border-dashed border-zinc-200 bg-white/50 px-4 py-5 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-400">
+                Run a review on the tab you have open. We will look at layout, usability, accessibility, and more.
+              </p>
             )}
           </div>
         ) : null}
 
         {!needsGeminiGate && tab === "issues" && session ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 text-xs"
-                onClick={() => downloadText("fairframe-report.md", auditToMarkdown(session), "text/markdown")}
-              >
-                <Download className="h-3.5 w-3.5" />
-                .md
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 text-xs"
-                onClick={() => downloadText("fairframe-report.json", auditToJson(session), "application/json")}
-              >
-                <Download className="h-3.5 w-3.5" />
-                .json
-              </Button>
+            <div className="shrink-0 space-y-1">
+              <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Export your report</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => downloadText("fairframe-report.md", auditToMarkdown(session), "text/markdown")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Markdown
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => downloadText("fairframe-report.json", auditToJson(session), "application/json")}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  JSON
+                </Button>
+              </div>
             </div>
             {session.response.notes ? (
-              <p className="shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+              <p className="shrink-0 rounded-lg border border-amber-200/80 bg-amber-50/60 px-3 py-2 text-[12px] leading-relaxed text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-100">
+                <span className="font-semibold text-amber-900 dark:text-amber-200">Note from the review · </span>
                 {session.response.notes}
               </p>
             ) : null}
@@ -403,7 +421,7 @@ export default function App() {
 
         {!needsGeminiGate && tab === "issues" && !session ? (
           <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-zinc-500">
-            Run a check first.
+            Start from <span className="font-medium text-zinc-700 dark:text-zinc-300">Home</span> and run a review first.
           </div>
         ) : null}
 
@@ -411,63 +429,69 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-6">
             <Card>
               <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">
                   <MonitorSmartphone className="h-4 w-4" />
-                  Page
+                  About this page
                 </div>
               </CardHeader>
               <CardContent className="grid gap-3 pt-0 sm:grid-cols-[minmax(0,1fr)_140px]">
-                <dl className="space-y-1.5 text-[11px]">
+                <dl className="space-y-3 text-[12px]">
                   <div>
-                    <dt className="font-semibold text-zinc-700 dark:text-zinc-300">URL</dt>
-                    <dd className="break-all font-mono text-zinc-600 dark:text-zinc-400">{meta.url}</dd>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Page title
+                    </dt>
+                    <dd className="mt-0.5 text-zinc-800 dark:text-zinc-200">{meta.title || "Untitled"}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-zinc-700 dark:text-zinc-300">Title</dt>
-                    <dd className="text-zinc-600 dark:text-zinc-400">{meta.title || "—"}</dd>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Link
+                    </dt>
+                    <dd className="mt-0.5 break-all text-zinc-600 dark:text-zinc-400">{meta.url}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-zinc-700 dark:text-zinc-300">Viewport</dt>
-                    <dd className="font-mono text-zinc-600 dark:text-zinc-400">
-                      {meta.viewport.width}×{meta.viewport.height} · DPR {meta.viewport.devicePixelRatio} ·{" "}
-                      <span className="capitalize">{meta.viewportProfile}</span>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Screen size used
+                    </dt>
+                    <dd className="mt-0.5 text-zinc-700 dark:text-zinc-300">
+                      {meta.viewport.width} × {meta.viewport.height} pixels
+                      <span className="text-zinc-500"> · </span>
+                      <span className="capitalize">{meta.viewportProfile}</span> layout
                     </dd>
                   </div>
-                  {meta.document ? (
-                    <div>
-                      <dt className="font-semibold text-zinc-700 dark:text-zinc-300">Document</dt>
-                      <dd className="font-mono text-zinc-600 dark:text-zinc-400">
-                        {meta.document.scrollWidth}×{meta.document.scrollHeight} · scroll ({Math.round(meta.document.scrollX)},{" "}
-                        {Math.round(meta.document.scrollY)})
-                      </dd>
-                    </div>
-                  ) : null}
                   {am ? (
                     <div>
-                      <dt className="font-semibold text-zinc-700 dark:text-zinc-300">Analysis</dt>
-                      <dd className="text-zinc-600 dark:text-zinc-400">
-                        <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-900">{am.engine}</code>
-                        {am.textModel ? (
-                          <>
-                            {" "}
-                            · <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-900">{am.textModel}</code>
-                          </>
-                        ) : null}
-                        {am.imageModel ? (
-                          <>
-                            {" "}
-                            · <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-900">{am.imageModel}</code>
-                          </>
-                        ) : null}
-                        <br />
-                        JPEGs: {am.screenshotStripCount ?? (am.hadViewportScreenshot ? 1 : 0)} · DOM {am.domNodesSent}
+                      <dt className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        How this review was run
+                      </dt>
+                      <dd className="mt-0.5 text-zinc-600 dark:text-zinc-400">
+                        {am.engine === "gemini" ? "Google Gemini" : "Your review server"}
+                        {am.screenshotStripCount != null && am.screenshotStripCount > 0
+                          ? ` · ${am.screenshotStripCount} page snapshot${am.screenshotStripCount === 1 ? "" : "s"}`
+                          : am.hadViewportScreenshot
+                            ? " · 1 page snapshot"
+                            : ""}
+                        {am.domNodesSent != null ? ` · ${am.domNodesSent} page elements considered` : null}
                       </dd>
+                      <details className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+                        <summary className="cursor-pointer font-medium text-zinc-600 dark:text-zinc-500">
+                          Technical names
+                        </summary>
+                        <div className="mt-1.5 space-y-1 font-mono text-[10px]">
+                          {am.textModel ? <p>Model: {am.textModel}</p> : null}
+                          {am.imageModel ? <p>Image: {am.imageModel}</p> : null}
+                          {meta.document ? (
+                            <p>
+                              Page size: {meta.document.scrollWidth}×{meta.document.scrollHeight}px
+                            </p>
+                          ) : null}
+                        </div>
+                      </details>
                     </div>
                   ) : null}
                 </dl>
                 {session.viewportPreviewJpegBase64 ? (
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-medium text-zinc-500">Thumbnail</span>
+                    <span className="text-[10px] font-medium text-zinc-500">Snapshot</span>
                     <img
                       alt=""
                       className="w-full rounded-md border border-zinc-200 object-cover dark:border-zinc-800"
@@ -475,7 +499,7 @@ export default function App() {
                     />
                   </div>
                 ) : (
-                  <p className="self-center text-center text-[10px] text-zinc-500">No thumbnail</p>
+                  <p className="self-center text-center text-[10px] text-zinc-500">No snapshot saved</p>
                 )}
               </CardContent>
             </Card>
@@ -484,12 +508,15 @@ export default function App() {
 
         {!needsGeminiGate && tab === "page" && !session ? (
           <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-zinc-500">
-            Run a check first.
+            Run a review from <span className="font-medium text-zinc-700 dark:text-zinc-300">Home</span> first.
           </div>
         ) : null}
 
         {!needsGeminiGate && tab === "log" && session?.analysisLog?.length ? (
-          <div className="flex min-h-0 flex-1 flex-col p-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+            <p className="shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400">
+              Step-by-step log for support or debugging. Most people do not need this.
+            </p>
             <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-200 bg-zinc-950 p-2 font-mono text-[10px] leading-relaxed text-emerald-100 dark:border-zinc-800">
               {session.analysisLog.join("\n")}
             </pre>
