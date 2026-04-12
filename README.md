@@ -21,6 +21,12 @@ FairFrame lives in Chrome’s **side panel**. Open the tab you care about, run a
 
 ---
 
+## Demo video
+
+**[Watch on YouTube](https://www.youtube.com/watch?v=DjgX9082ku4)** — walkthrough of FairFrame in Chrome.
+
+---
+
 ## What you get
 
 |  |  |
